@@ -5,21 +5,33 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { api } from "@/server/api";
 
+// Tipagem opcional
+type MovimentoSuite = {
+  movId: number;
+  movSuiId: number;
+  movSuiEntrada: string;
+  movSuiStatus: string;
+};
+
 export default function MovimentosPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const params = useParams();
 
-  const [movim, setMovim] = useState("");
   const [statusSuite, setStatusSuite] = useState<string | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [showModalFecha, setShowModalFecha] = useState(false);
+  const [movimentoAtual, setMovimentoAtual] = useState<MovimentoSuite | null>(null);
+
+  const [showModalEntrada, setShowModalEntrada] = useState(false);
+  const [showModalFechamento, setShowModalFechamento] = useState(false);
+
   const [qtdUsrExtra, setQtdUsrExtra] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
+  // Params
   const suiId = params?.suiId;
   const usrId = session?.user?.id;
 
+  // Lista de movimentos
   const movimentos = [
     { id: 1, nome: "Entrada" },
     { id: 2, nome: "Transferência" },
@@ -29,241 +41,333 @@ export default function MovimentosPage() {
     { id: 6, nome: "Fechamento" },
   ];
 
-  // 🔍 Buscar status atual da suíte
-  const buscarStatusSuite = async () => {
+  // =============================================================
+  // 🔍 Buscar status da suíte
+  // =============================================================
+  const carregarStatusSuite = async () => {
     try {
       if (!suiId) return;
-      const resp = await api.get(`/searchSuite/${suiId}`);
-      if (!resp?.data) throw new Error("Erro ao buscar status da suíte");
 
-      setStatusSuite(resp.data.suiStatus); 
-      console.log("🟢 Status da suíte:", resp.data.suiStatus);
+      const resp = await api.get(`/searchSuite/${suiId}`);
+      setStatusSuite(resp.data?.suiStatus || null);
     } catch (err) {
       console.error(err);
-      alert("Erro ao buscar status da suíte");
+      alert("Erro ao obter status da suíte.");
     }
   };
 
   useEffect(() => {
-    buscarStatusSuite();
+    carregarStatusSuite();
   }, [suiId]);
 
-  const handleMovimento = (movimento: string) => {
-    if (movimento === "Entrada") {
+  // =============================================================
+  // 🔍 Buscar movimento ativo da suíte
+  // =============================================================
+  const carregarMovimentoAtual = async () => {
+    try {
+      const resp = await api.get(`/searchMovim/${suiId}`);
+      if (!resp.data) throw new Error("Movimento não encontrado.");
+      setMovimentoAtual(resp.data);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao obter movimento atual.");
+    }
+  };
+
+  // =============================================================
+  // 📌 Ação ao clicar em um movimento
+  // =============================================================
+  const handleMovimento = async (tipo: string) => {
+
+    if (tipo === "Entrada") {
       if (statusSuite !== "A") {
         alert(`A suíte não está disponível. Status atual: ${statusSuite}`);
         return;
       }
-      setShowModal(true);
+      setShowModalEntrada(true);
+      return;
     }
 
-    if (movimento === "Fechamento") {
+    if (tipo === "Fechamento") {
       if (statusSuite !== "O") {
         alert(`A suíte não está ocupada. Status atual: ${statusSuite}`);
         return;
       }
-      setShowModalFecha(true);
+
+      await carregarMovimentoAtual();
+      setShowModalFechamento(true);
+      return;
     }
 
-    if (movimento === "Pedido") {
+    if (tipo === "Pedido") {
       if (statusSuite !== "O") {
         alert(`A suíte não está ocupada. Status atual: ${statusSuite}`);
         return;
       }
-      handleLancarPedido()
+      handleLancarPedido();
+      return;
     }
+
+    if (tipo === "Limpeza") {
+      handleLimpezaSuite();
+      return;
+    }
+
+    if (tipo === "Manutenção") {
+      handleManutencaoSuite();
+      return;
+    }
+
+    alert(`Movimento "${tipo}" ainda não implementado.`);
   };
 
+  // =============================================================
+  // ✔ Entrada
+  // =============================================================
   const handleConfirmarEntrada = async () => {
     if (!usrId || !suiId) return;
+
     try {
       setLoading(true);
+
       const res = await api.post("/entrada", {
         suiId,
         usrId,
         qtdUsrExtra,
       });
 
-      if (!res) throw new Error("Erro ao registrar entrada.");
+      console.log("Entrada registrada:", res.data);
 
-      console.log("✅ Entrada registrada:", res.data);
-      setShowModal(false);
+      setShowModalEntrada(false);
       router.push("/dashboard");
     } catch (err) {
       console.error(err);
-      alert("Ocorreu um erro ao registrar a entrada.");
+      alert("Erro ao registrar entrada.");
     } finally {
       setLoading(false);
     }
   };
 
+  // =============================================================
+  // ✔ Fechamento
+  // =============================================================
   const handleConfirmarFechamento = async () => {
-    if (!usrId || !suiId) return;
+    if (!movimentoAtual?.movId) {
+      alert("Não foi possível encontrar o movimento ativo.");
+      return;
+    }
+
     try {
       setLoading(true);
-      const res = await api.post("/fechar", { movim });
 
-      if (!res) throw new Error("Erro ao registrar fechamento.");
+      const res = await api.post("/fechar", {
+        movim: movimentoAtual.movId,
+      });
 
-      console.log("✅ Fechamento registrado:", res.data);
-      setShowModalFecha(false);
+      console.log("Fechamento concluído:", res.data);
+
+      setShowModalFechamento(false);
       router.push("/dashboard");
     } catch (err) {
       console.error(err);
-      alert("Ocorreu um erro ao registrar o fechamento.");
+      alert("Erro ao registrar fechamento.");
     } finally {
       setLoading(false);
     }
   };
 
+  // =============================================================
+  // ✔ Pedido
+  // =============================================================
   const handleLancarPedido = async () => {
-    if (!usrId || !suiId) return;
     try {
-      setLoading(true);
       const resp = await api.get(`/searchMovim/${suiId}`);
-      if (!resp?.data) throw new Error("Erro ao buscar movimento da suíte");
+      const movId = resp.data?.movId;
 
-      const movId = resp.data.movId;       
-      router.push(`/dashboard/pedido/${movId}`)
+      if (!movId) throw new Error("Movimento não encontrado.");
+
+      router.push(`/dashboard/pedido/${movId}`);
     } catch (err) {
       console.error(err);
-      alert("Ocorreu um erro ao tentar registrar pedido.");
+      alert("Erro ao iniciar pedido.");
+    }
+  };
+
+  // =============================================================
+  // ✔ LIMPEZA — NOVO
+  // =============================================================
+  const handleLimpezaSuite = async () => {
+    try {
+      if (!suiId) return;
+
+      setLoading(true);
+
+      const res = await api.put(`/limpezaSuite/${suiId}`);
+
+      console.log("Status da suíte atualizado:", res.data);
+
+      await carregarStatusSuite();
+
+      router.push("/dashboard");
+
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao atualizar status da suíte.");
     } finally {
       setLoading(false);
     }
   };
 
+  // =============================================================
+  // ✔ MANUTENÇÃO — NOVO
+  // =============================================================
+  const handleManutencaoSuite = async () => {
+    try {
+      if (!suiId) return;
+
+      setLoading(true);
+
+      const res = await api.put(`/manutencaoSuite/${suiId}`);
+
+      console.log("Status da suíte atualizado:", res.data);
+
+      await carregarStatusSuite();
+
+      router.push("/dashboard");
+
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao atualizar status da suíte.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // =============================================================
+  // 🔐 Quando não autenticado
+  // =============================================================
   if (!usrId) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#1e1b4b] text-white">
-        <p className="text-lg">
-          ⚠️ Usuário não autenticado. Faça login novamente.
-        </p>
+        <p>⚠️ Usuário não autenticado.</p>
       </div>
     );
   }
 
+  // =============================================================
+  // 🖥 Renderização
+  // =============================================================
   return (
-    <section className="w-full bg-[#1e1b4b] text-white min-h-screen relative">
-      <div className="container mx-auto px-6 py-16 lg:py-24 relative z-10">
-        {/* Cabeçalho */}
-        <div className="w-full max-w-5xl mx-auto mb-8 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              className="bg-[#08062e] text-white font-semibold px-4 py-2 rounded-lg shadow-md hover:bg-pink-600/30 hover:shadow-pink-500/30 transition-all duration-300 z-50"
-            >
-              ← Voltar
-            </button>
-            <h1 className="text-3xl font-bold">
-              Movimentos da Suíte {suiId}
-            </h1>
-          </div>
+    <section className="w-full bg-[#1e1b4b] text-white min-h-screen">
+
+      <div className="container mx-auto px-6 py-16">
+
+        <div className="flex items-center gap-4 mb-8">
+          <button
+            onClick={() => router.back()}
+            className="bg-[#08062e] px-4 py-2 rounded-lg hover:bg-pink-600/30"
+          >
+            ← Voltar
+          </button>
+
+          <h1 className="text-3xl font-bold">Movimentos da Suíte {suiId}</h1>
         </div>
 
-        {/* Status da suíte */}
-        <p className="text-center text-slate-300 mb-6">
+        <p className="text-center mb-4 text-slate-300">
           Status atual:{" "}
-          <span
-            className={`font-bold ${
-              statusSuite === "Disponível"
-                ? "text-green-400"
-                : "text-red-400"
-            }`}
-          >
+          <span className="font-bold text-pink-400">
             {statusSuite || "Carregando..."}
           </span>
         </p>
 
-        {/* Grid de Movimentos */}
-        <div className="w-full max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+
           {movimentos.map((mov) => (
             <button
               key={mov.id}
               onClick={() => handleMovimento(mov.nome)}
-              className={`bg-[#1b1740] text-white text-xl font-semibold py-8 rounded-2xl shadow-lg transition-all duration-300
-                ${
-                  mov.nome === "Entrada" && statusSuite !== "Disponível"
-                    ? "opacity-50 cursor-not-allowed"
-                    : "hover:bg-[#08062e] hover:shadow-pink-500/30 hover:scale-105"
-                }`}
-              disabled={mov.nome === "Entrada" && statusSuite !== "Disponível"}
+              className="bg-[#1b1740] py-8 rounded-2xl shadow-lg hover:scale-105 hover:bg-[#08062e] transition"
             >
               {mov.nome}
             </button>
           ))}
+
         </div>
 
-        {/* Rodapé */}
-        <p className="mt-10 text-slate-400 text-sm text-center">
+        <p className="text-center text-sm text-slate-400 mt-10">
           Usuário logado: <strong>{usrId}</strong>
         </p>
       </div>
 
-      {/* Modais iguais aos seus */}
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50">
-          <div className="bg-[#1b1740] p-8 rounded-2xl shadow-xl w-[90%] max-w-md text-center">
-            <h2 className="text-2xl font-bold mb-4">
-              Entrada na Suíte {suiId}
-            </h2>
-            <p className="text-sm text-slate-300 mb-6">
-              Informe a quantidade de usuários extras:
-            </p>
+      {/* === MODAL ENTRADA === */}
+      {showModalEntrada && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-[#1b1740] p-8 rounded-2xl w-[90%] max-w-md text-center">
+
+            <h2 className="text-2xl font-bold mb-4">Entrada na Suíte {suiId}</h2>
+
+            <p className="text-slate-300 mb-4">Informe usuários extras:</p>
+
             <input
               type="number"
               min="0"
               value={qtdUsrExtra}
               onChange={(e) => setQtdUsrExtra(Number(e.target.value))}
-              className="w-full px-4 py-2 rounded-lg bg-[#08062e] text-white text-center mb-6 focus:outline-none focus:ring-2 focus:ring-pink-500"
-              placeholder="0"
+              className="w-full px-4 py-2 rounded bg-[#08062e] text-center mb-6"
             />
+
             <div className="flex justify-center gap-4">
               <button
-                onClick={() => setShowModal(false)}
-                className="bg-gray-600 hover:bg-gray-500 text-white font-semibold px-4 py-2 rounded-lg transition-all duration-300"
+                onClick={() => setShowModalEntrada(false)}
+                className="bg-gray-600 px-4 py-2 rounded-lg"
                 disabled={loading}
               >
                 Cancelar
               </button>
+
               <button
                 onClick={handleConfirmarEntrada}
-                className="bg-pink-600 hover:bg-pink-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition-all duration-300"
+                className="bg-pink-600 px-4 py-2 rounded-lg"
                 disabled={loading}
               >
-                {loading ? "Confirmando..." : "Confirmar"}
+                {loading ? "Enviando..." : "Confirmar"}
               </button>
             </div>
+
           </div>
         </div>
       )}
 
-      {/* Modal Fechamento */}
-      {showModalFecha && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50">
-          <div className="bg-[#1b1740] p-8 rounded-2xl shadow-xl w-[90%] max-w-md text-center">
-            <h2 className="text-2xl font-bold mb-4">
-              Fechamento da Suíte {suiId}
-            </h2>
+      {/* === MODAL FECHAMENTO === */}
+      {showModalFechamento && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-[#1b1740] p-8 rounded-2xl w-[90%] max-w-md text-center">
+
+            <h2 className="text-2xl font-bold mb-4">Fechar Suíte {suiId}</h2>
+
             <div className="flex justify-center gap-4">
               <button
-                onClick={() => setShowModalFecha(false)}
-                className="bg-gray-600 hover:bg-gray-500 text-white font-semibold px-4 py-2 rounded-lg transition-all duration-300"
+                onClick={() => setShowModalFechamento(false)}
+                className="bg-gray-600 px-4 py-2 rounded-lg"
                 disabled={loading}
               >
                 Cancelar
               </button>
+
               <button
                 onClick={handleConfirmarFechamento}
-                className="bg-pink-600 hover:bg-pink-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition-all duration-300"
+                className="bg-pink-600 px-4 py-2 rounded-lg"
                 disabled={loading}
               >
-                {loading ? "Confirmando..." : "Confirmar"}
+                {loading ? "Fechando..." : "Confirmar"}
               </button>
             </div>
+
           </div>
         </div>
       )}
+
     </section>
   );
 }
+
