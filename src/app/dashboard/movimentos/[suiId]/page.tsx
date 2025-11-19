@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { api } from "@/server/api";
 
-// Tipagem opcional
 type MovimentoSuite = {
   movId: number;
   movSuiId: number;
@@ -27,11 +26,9 @@ export default function MovimentosPage() {
   const [qtdUsrExtra, setQtdUsrExtra] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
-  // Params
   const suiId = params?.suiId;
   const usrId = session?.user?.id;
 
-  // Lista de movimentos
   const movimentos = [
     { id: 1, nome: "Entrada" },
     { id: 2, nome: "Transferência" },
@@ -41,9 +38,6 @@ export default function MovimentosPage() {
     { id: 6, nome: "Fechamento" },
   ];
 
-  // =============================================================
-  // 🔍 Buscar status da suíte
-  // =============================================================
   const carregarStatusSuite = async () => {
     try {
       if (!suiId) return;
@@ -60,9 +54,6 @@ export default function MovimentosPage() {
     carregarStatusSuite();
   }, [suiId]);
 
-  // =============================================================
-  // 🔍 Buscar movimento ativo da suíte
-  // =============================================================
   const carregarMovimentoAtual = async () => {
     try {
       const resp = await api.get(`/searchMovim/${suiId}`);
@@ -74,9 +65,6 @@ export default function MovimentosPage() {
     }
   };
 
-  // =============================================================
-  // 📌 Ação ao clicar em um movimento
-  // =============================================================
   const handleMovimento = async (tipo: string) => {
 
     if (tipo === "Entrada") {
@@ -121,9 +109,6 @@ export default function MovimentosPage() {
     alert(`Movimento "${tipo}" ainda não implementado.`);
   };
 
-  // =============================================================
-  // ✔ Entrada
-  // =============================================================
   const handleConfirmarEntrada = async () => {
     if (!usrId || !suiId) return;
 
@@ -148,9 +133,6 @@ export default function MovimentosPage() {
     }
   };
 
-  // =============================================================
-  // ✔ Fechamento
-  // =============================================================
   const handleConfirmarFechamento = async () => {
     if (!movimentoAtual?.movId) {
       alert("Não foi possível encontrar o movimento ativo.");
@@ -176,9 +158,6 @@ export default function MovimentosPage() {
     }
   };
 
-  // =============================================================
-  // ✔ Pedido
-  // =============================================================
   const handleLancarPedido = async () => {
     try {
       const resp = await api.get(`/searchMovim/${suiId}`);
@@ -193,9 +172,6 @@ export default function MovimentosPage() {
     }
   };
 
-  // =============================================================
-  // ✔ LIMPEZA — NOVO
-  // =============================================================
   const handleLimpezaSuite = async () => {
     try {
       if (!suiId) return;
@@ -218,9 +194,6 @@ export default function MovimentosPage() {
     }
   };
 
-  // =============================================================
-  // ✔ MANUTENÇÃO — NOVO
-  // =============================================================
   const handleManutencaoSuite = async () => {
     try {
       if (!suiId) return;
@@ -243,9 +216,6 @@ export default function MovimentosPage() {
     }
   };
 
-  // =============================================================
-  // 🔐 Quando não autenticado
-  // =============================================================
   if (!usrId) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#1e1b4b] text-white">
@@ -254,9 +224,6 @@ export default function MovimentosPage() {
     );
   }
 
-  // =============================================================
-  // 🖥 Renderização
-  // =============================================================
   return (
     <section className="w-full bg-[#1e1b4b] text-white min-h-screen">
 
@@ -299,7 +266,6 @@ export default function MovimentosPage() {
         </p>
       </div>
 
-      {/* === MODAL ENTRADA === */}
       {showModalEntrada && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-[#1b1740] p-8 rounded-2xl w-[90%] max-w-md text-center">
@@ -338,7 +304,6 @@ export default function MovimentosPage() {
         </div>
       )}
 
-      {/* === MODAL FECHAMENTO === */}
       {showModalFechamento && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-[#1b1740] p-8 rounded-2xl w-[90%] max-w-md text-center">

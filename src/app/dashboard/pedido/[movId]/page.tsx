@@ -46,19 +46,25 @@ export default function PedidoPage() {
   const [itens, setItens] = useState<ItemConsumo[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // MODAL DE LANÇAR ITEM
+  // Modal lançar
   const [modalOpen, setModalOpen] = useState(false);
   const [codigoProduto, setCodigoProduto] = useState("");
-  const [quantidade, setQuantidade] = useState(1);
+  const [quantidade, setQuantidade] = useState<number>(1);
 
-  // MODAL DE RETIRAR ITEM
+  // Modal retirar
   const [modalRetirar, setModalRetirar] = useState(false);
   const [codigoRemove, setCodigoRemove] = useState("");
-  const [qtdRemove, setQtdRemove] = useState(1);
+  const [qtdRemove, setQtdRemove] = useState<number>(1);
 
+  // Produto carregado
   const [produtoInfo, setProdutoInfo] = useState<any | null>(null);
   const [loadingProduto, setLoadingProduto] = useState(false);
 
+  // Busca por descrição
+  const [listaBusca, setListaBusca] = useState<any[]>([]);
+  const [buscaDescricao, setBuscaDescricao] = useState("");
+
+  // Tempo permanência
   const [tempoPermanencia, setTempoPermanencia] = useState("00:00");
 
   const calcularPermanencia = (entrada: string) => {
@@ -69,50 +75,74 @@ export default function PedidoPage() {
     const horas = Math.floor(diffMin / 60);
     const minutos = diffMin % 60;
 
-    return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}`;
+    return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(
+      2,
+      "0"
+    )}`;
   };
 
+  // Buscar por código
   const buscarProduto = async () => {
     if (!codigoProduto.trim()) {
       setProdutoInfo(null);
       return;
     }
+
     try {
       setLoadingProduto(true);
       const res = await api.get(`/searchProd/${codigoProduto}`);
       setProdutoInfo(res.data);
-    } catch (e) {
+    } catch {
       setProdutoInfo(null);
     } finally {
       setLoadingProduto(false);
     }
   };
 
+  // Buscar por descrição
+  const buscarPorDescricao = async (texto: string) => {
+    if (texto.trim().length < 2) {
+      setListaBusca([]);
+      return;
+    }
+
+    try {
+      const res = await api.get(`/searchProdDesc/${texto}`);
+      setListaBusca(res.data ?? []);
+    } catch {
+      setListaBusca([]);
+    }
+  };
+
+  const selecionarProdutoBusca = (prod: any) => {
+    setCodigoProduto(String(prod.prdId));  // <- AGORA USA prdId
+    setProdutoInfo(prod);
+    setListaBusca([]);
+    setBuscaDescricao(prod.prdDescricao);
+  };
+
+  // Carregar dados iniciais
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       try {
         setLoading(true);
 
         const respMov = await api.get(`/dadosMovim/${movim}`);
         setMovimento(respMov.data);
 
-        try {
-          const respItens = await api.get(`/searchItens/${movim}`);
-          setItens(respItens.data ?? []);
-        } catch {
-          setItens([]);
-        }
-      } catch (err) {
-        alert("Erro ao carregar o movimento.");
+        const respItens = await api.get(`/searchItens/${movim}`);
+        setItens(respItens.data ?? []);
+      } catch {
+        alert("Erro ao carregar dados");
       } finally {
         setLoading(false);
       }
     };
 
-    if (movim) fetchData();
+    if (movim) load();
   }, [movim]);
 
-  // Tempo de permanência
+  // Atualizar permanência
   useEffect(() => {
     if (!movimento?.movSuiEntrada || movimento.movSuiSaida) return;
 
@@ -125,11 +155,18 @@ export default function PedidoPage() {
     return () => clearInterval(interval);
   }, [movimento?.movSuiEntrada, movimento?.movSuiSaida]);
 
-  // CONFIRMAR LANÇAMENTO
+  const limparCamposLancar = () => {
+    setCodigoProduto("");
+    setQuantidade(1);
+    setProdutoInfo(null);
+    setListaBusca([]);
+    setBuscaDescricao("");
+  };
+
   const handleConfirmarLancamento = async () => {
     try {
-      if (!codigoProduto.trim()) return alert("Informe o código do produto");
-      if (!produtoInfo) return alert("Produto não encontrado!");
+      if (!codigoProduto.trim()) return alert("Código obrigatório");
+      if (!produtoInfo) return alert("Produto não encontrado");
 
       setLoading(true);
 
@@ -141,27 +178,23 @@ export default function PedidoPage() {
       });
 
       setModalOpen(false);
-      setCodigoProduto("");
-      setQuantidade(1);
-      setProdutoInfo(null);
+      limparCamposLancar();
 
-      // Atualiza dados
-      const resp = await api.get(`/dadosMovim/${movim}`);
-      setMovimento(resp.data);
+      const respMov = await api.get(`/dadosMovim/${movim}`);
+      setMovimento(respMov.data);
 
       const respItens = await api.get(`/searchItens/${movim}`);
       setItens(respItens.data ?? []);
-    } catch (e) {
-      alert("Erro ao lançar item.");
+    } catch {
+      alert("Erro ao lançar item");
     } finally {
       setLoading(false);
     }
   };
 
-  // CONFIRMAR RETIRADA
   const handleConfirmarRetirada = async () => {
     try {
-      if (!codigoRemove.trim()) return alert("Informe o código do produto");
+      if (!codigoRemove.trim()) return alert("Informe o código");
 
       setLoading(true);
 
@@ -175,14 +208,13 @@ export default function PedidoPage() {
       setCodigoRemove("");
       setQtdRemove(1);
 
-      // Atualiza dados
-      const resp = await api.get(`/dadosMovim/${movim}`);
-      setMovimento(resp.data);
+      const respMov = await api.get(`/dadosMovim/${movim}`);
+      setMovimento(respMov.data);
 
       const respItens = await api.get(`/searchItens/${movim}`);
       setItens(respItens.data ?? []);
-    } catch (e) {
-      alert("Erro ao retirar item.");
+    } catch {
+      alert("Erro ao retirar item");
     } finally {
       setLoading(false);
     }
@@ -194,50 +226,95 @@ export default function PedidoPage() {
         Pedido da Suíte #{movimento?.movSuiId ?? "—"}
       </h1>
 
+      {/* Dados do pedido */}
       {movimento && (
         <Card>
-          <CardHeader className="font-semibold text-lg">Dados do Pedido</CardHeader>
+          <CardHeader className="font-semibold text-lg">
+            Dados do Pedido
+          </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <p><strong>ID:</strong> {movimento.movId}</p>
             <p><strong>Entrada:</strong> {movimento.movSuiEntrada}</p>
             <p><strong>Saída:</strong> {movimento.movSuiSaida || "—"}</p>
             <p><strong>Permanência:</strong> {tempoPermanencia}</p>
             <p><strong>Valor Suíte:</strong> R$ {movimento.movSuiVlr.toFixed(2)}</p>
-            <p><strong>Consumo:</strong> R$ {Number(movimento.movSuiTotConsumo ?? 0).toFixed(2)}</p>
-            <p><strong>Total a Pagar:</strong> R$ {Number(movimento.movSuiTotPagar ?? 0).toFixed(2)}</p>
+            <p><strong>Consumo:</strong> R$ {Number(movimento.movSuiTotConsumo).toFixed(2)}</p>
+            <p><strong>Total a Pagar:</strong> R$ {Number(movimento.movSuiTotPagar).toFixed(2)}</p>
             <p><strong>Status:</strong> {movimento.movSuiStatus}</p>
           </CardContent>
         </Card>
       )}
 
+      {/* Itens */}
       <Card>
         <CardHeader className="flex justify-between items-center">
           <h2 className="font-semibold text-lg">Itens do Pedido</h2>
 
           <div className="flex gap-2">
-            {/* BOTÃO LANÇAR */}
-            <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+
+            {/* MODAL LANÇAR */}
+            <Dialog
+              open={modalOpen}
+              onOpenChange={(aberto) => {
+                setModalOpen(aberto);
+                if (!aberto) limparCamposLancar();
+              }}
+            >
               <DialogTrigger asChild>
                 <Button>+ Lançar Item</Button>
               </DialogTrigger>
+
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Lançar Item</DialogTitle>
                 </DialogHeader>
+
                 <div className="space-y-4">
+
+                  {/* BUSCAR POR DESCRIÇÃO */}
+                  <Input
+                    placeholder="Buscar produto por descrição..."
+                    value={buscaDescricao}
+                    onChange={(e) => {
+                      setBuscaDescricao(e.target.value);
+                      buscarPorDescricao(e.target.value);
+                    }}
+                  />
+
+                  {listaBusca.length > 0 && (
+                    <div className="border rounded p-2 max-h-40 overflow-y-auto bg-white shadow">
+                      {listaBusca.map((p) => (
+                        <div
+                          key={p.prdId}
+                          className="p-2 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => selecionarProdutoBusca(p)}
+                        >
+                          <p className="font-semibold">{p.prdDescricao}</p>
+                          <p className="text-xs text-gray-600">Ref: {p.prdReferencia}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Código */}
                   <Input
                     placeholder="Código do Produto"
                     value={codigoProduto}
                     onChange={(e) => setCodigoProduto(e.target.value)}
                     onBlur={buscarProduto}
                   />
+
+                  {/* Quantidade */}
                   <Input
                     type="number"
                     placeholder="Quantidade"
                     value={quantidade}
                     onChange={(e) => setQuantidade(Number(e.target.value))}
                   />
+
+                  {/* Produto carregado */}
                   {loadingProduto && <p>Carregando...</p>}
+
                   {produtoInfo && (
                     <div className="p-3 border rounded bg-gray-50">
                       <p><strong>{produtoInfo.prdDescricao}</strong></p>
@@ -246,6 +323,7 @@ export default function PedidoPage() {
                     </div>
                   )}
                 </div>
+
                 <DialogFooter>
                   <Button onClick={handleConfirmarLancamento} disabled={loading}>
                     {loading ? "Salvando..." : "Confirmar"}
@@ -254,11 +332,21 @@ export default function PedidoPage() {
               </DialogContent>
             </Dialog>
 
-            {/* BOTÃO RETIRAR */}
-            <Dialog open={modalRetirar} onOpenChange={setModalRetirar}>
+            {/* MODAL RETIRAR */}
+            <Dialog
+              open={modalRetirar}
+              onOpenChange={(aberto) => {
+                setModalRetirar(aberto);
+                if (!aberto) {
+                  setCodigoRemove("");
+                  setQtdRemove(1);
+                }
+              }}
+            >
               <DialogTrigger asChild>
                 <Button variant="destructive">– Retirar Item</Button>
               </DialogTrigger>
+
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Retirar Item</DialogTitle>
@@ -270,6 +358,7 @@ export default function PedidoPage() {
                     value={codigoRemove}
                     onChange={(e) => setCodigoRemove(e.target.value)}
                   />
+
                   <Input
                     type="number"
                     placeholder="Quantidade"
@@ -289,7 +378,7 @@ export default function PedidoPage() {
         </CardHeader>
 
         <CardContent className="space-y-3">
-          {(itens?.length ?? 0) > 0 && (
+          {(itens.length ?? 0) > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-7 gap-3 border-b pb-2 font-semibold text-sm text-gray-700">
               <p>Produto</p>
               <p>Descrição</p>
@@ -301,7 +390,7 @@ export default function PedidoPage() {
             </div>
           )}
 
-          {(itens?.length ?? 0) === 0 ? (
+          {itens.length === 0 ? (
             <p className="text-gray-500">Nenhum item lançado.</p>
           ) : (
             itens.map((item) => (
