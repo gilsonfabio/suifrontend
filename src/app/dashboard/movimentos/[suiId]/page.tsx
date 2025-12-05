@@ -24,6 +24,7 @@ export default function MovimentosPage() {
   const [showModalFechamento, setShowModalFechamento] = useState(false);
 
   const [qtdUsrExtra, setQtdUsrExtra] = useState<number>(0);
+  const [vlrDeposito, setVlrDeposito] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
   const suiId = params?.suiId;
@@ -97,11 +98,19 @@ export default function MovimentosPage() {
     }
 
     if (tipo === "Limpeza") {
+      if (statusSuite !== "L" && statusSuite !== "A") {
+        alert(`A suíte não pode ser colocada em limpeza. Status atual: ${statusSuite}`);
+        return;
+      }
       handleLimpezaSuite();
       return;
     }
 
     if (tipo === "Manutenção") {
+      if (statusSuite !== "M" && statusSuite !== "A") {
+        alert(`A suíte não pode ser colocada em manutenção. Status atual: ${statusSuite}`);
+        return;
+      }
       handleManutencaoSuite();
       return;
     }
@@ -119,6 +128,7 @@ export default function MovimentosPage() {
         suiId,
         usrId,
         qtdUsrExtra,
+        vlrDeposito,
       });
 
       console.log("Entrada registrada:", res.data);
@@ -134,27 +144,16 @@ export default function MovimentosPage() {
   };
 
   const handleConfirmarFechamento = async () => {
-    if (!movimentoAtual?.movId) {
-      alert("Não foi possível encontrar o movimento ativo.");
-      return;
-    }
-
     try {
-      setLoading(true);
+      const resp = await api.get(`/searchMovim/${suiId}`);
+      const movId = resp.data?.movId;
 
-      const res = await api.post("/fechar", {
-        movim: movimentoAtual.movId,
-      });
+      if (!movId) throw new Error("Movimento não encontrado.");
 
-      console.log("Fechamento concluído:", res.data);
-
-      setShowModalFechamento(false);
-      router.push("/dashboard");
+      router.push(`/dashboard/fechamento/${movId}`);
     } catch (err) {
       console.error(err);
-      alert("Erro ao registrar fechamento.");
-    } finally {
-      setLoading(false);
+      alert("Erro ao iniciar fechamento.");
     }
   };
 
@@ -227,8 +226,7 @@ export default function MovimentosPage() {
   return (
     <section className="w-full bg-[#1e1b4b] text-white min-h-screen">
 
-      <div className="container mx-auto px-6 py-16">
-
+      <div className="container mx-auto px-6 py-16">        
         <div className="flex items-center gap-4 mb-8">
           <button
             onClick={() => router.back()}
@@ -279,6 +277,16 @@ export default function MovimentosPage() {
               min="0"
               value={qtdUsrExtra}
               onChange={(e) => setQtdUsrExtra(Number(e.target.value))}
+              className="w-full px-4 py-2 rounded bg-[#08062e] text-center mb-6"
+            />
+             
+            <p className="text-slate-300 mb-4">Informe Vlr. Deposito:</p>
+
+            <input
+              type="number"
+              min="0"
+              value={vlrDeposito}
+              onChange={(e) => setVlrDeposito(Number(e.target.value))}
               className="w-full px-4 py-2 rounded bg-[#08062e] text-center mb-6"
             />
 
@@ -335,4 +343,3 @@ export default function MovimentosPage() {
     </section>
   );
 }
-

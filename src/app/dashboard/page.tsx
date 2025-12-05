@@ -28,7 +28,6 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const res = await api.get("/categorias");
-      console.log("📦 Dados recebidos da API:", res.data);
       setCategorias(res.data);
     } catch (err) {
       console.log("❌ Erro ao buscar categorias:", err);
@@ -38,23 +37,18 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (status === "authenticated") {
-      fetchCategorias();
-    }
+    if (status === "authenticated") fetchCategorias();
   }, [status, fetchCategorias]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && status === "authenticated") {
-        console.log("🔁 Atualizando categorias ao voltar para a tela...");
         fetchCategorias();
       }
     };
 
     window.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    return () => window.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [status, fetchCategorias]);
 
   const handleIrMovimentos = (suiId: number) => {
@@ -79,89 +73,77 @@ export default function DashboardPage() {
 
   return (
     <section className="w-full bg-[#1e1b4b] text-white min-h-screen">
-      <div className="container mx-auto px-6 py-16 lg:py-24">
-        <div className="space-y-6 text-center mb-12">
-          <h2 className="text-3xl font-bold">Categorias e Suítes</h2>
+      <div className="container mx-auto px-4 sm:px-6 py-12 lg:py-20">
+        <div className="space-y-4 text-center mb-12">
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-wide drop-shadow-xl">
+            Categorias e Suítes
+          </h2>
+          <p className="text-gray-300">Visualize o status das suítes em tempo real</p>
         </div>
-  
+
         {loading ? (
-          <p className="text-center text-gray-300">Carregando categorias...</p>
+          <p className="text-center text-gray-300 animate-pulse">Carregando categorias...</p>
         ) : categorias.length === 0 ? (
-          <p className="text-center text-gray-300">
-            Nenhuma categoria disponível.
-          </p>
+          <p className="text-center text-gray-300">Nenhuma categoria disponível.</p>
         ) : (
           <>
             {/* 🔹 Legenda de status com totalizadores */}
             <div className="flex flex-wrap justify-center gap-4 mb-10">
               {(() => {
-                // Conta as suítes por status
                 const allSuites = categorias.flatMap((cat) => cat.suites || []);
-                const totalOcupadas = allSuites.filter((s) => s.suiStatus === "O").length;
-                const totalLimpeza = allSuites.filter((s) => s.suiStatus === "L").length;
-                const totalManutencao = allSuites.filter((s) => s.suiStatus === "M").length;
-                const totalDisponiveis = allSuites.filter((s) => s.suiStatus === "A").length;
-  
-                return (
-                  <>
-                    <div className="flex items-center gap-2 bg-red-600 text-white px-3 py-2 rounded-lg shadow">
-                      <div className="w-4 h-4 rounded-full bg-white/30" />
-                      <span>{totalOcupadas} suíte(s) ocupada(s)</span>
-                    </div>
-  
-                    <div className="flex items-center gap-2 bg-yellow-400 text-black px-3 py-2 rounded-lg shadow">
-                      <div className="w-4 h-4 rounded-full bg-black/20" />
-                      <span>{totalLimpeza} suíte(s) em limpeza</span>
-                    </div>
-  
-                    <div className="flex items-center gap-2 bg-gray-400 text-black px-3 py-2 rounded-lg shadow">
-                      <div className="w-4 h-4 rounded-full bg-black/20" />
-                      <span>{totalManutencao} suíte(s) em manutenção</span>
-                    </div>
-  
-                    <div className="flex items-center gap-2 bg-[#1b1740] text-white px-3 py-2 rounded-lg shadow">
-                      <div className="w-4 h-4 rounded-full bg-pink-500/30" />
-                      <span>{totalDisponiveis} suíte(s) disponível(is)</span>
-                    </div>
-                  </>
-                );
+
+                const totals = {
+                  ocupadas: allSuites.filter((s) => s.suiStatus === "O").length,
+                  limpeza: allSuites.filter((s) => s.suiStatus === "L").length,
+                  manutencao: allSuites.filter((s) => s.suiStatus === "M").length,
+                  disponiveis: allSuites.filter((s) => s.suiStatus === "A").length,
+                };
+
+                const items = [
+                  { label: "Ocupadas", value: totals.ocupadas, color: "bg-red-600", dot: "bg-white/30", text: "text-white" },
+                  { label: "Limpeza", value: totals.limpeza, color: "bg-yellow-400", dot: "bg-black/20", text: "text-black" },
+                  { label: "Manutenção", value: totals.manutencao, color: "bg-gray-400", dot: "bg-black/20", text: "text-black" },
+                  { label: "Disponíveis", value: totals.disponiveis, color: "bg-[#1b1740]", dot: "bg-pink-500/30", text: "text-white" },
+                ];
+
+                return items.map((item, index) => (
+                  <div
+                    key={index}
+                    className={`${item.color} ${item.text} flex items-center gap-2 px-4 py-2 rounded-xl shadow-lg backdrop-blur-md`}
+                  >
+                    <div className={`w-4 h-4 rounded-full ${item.dot}`} />
+                    <span className="font-medium">{item.value} {item.label}</span>
+                  </div>
+                ));
               })()}
             </div>
-  
+
             {/* 🔹 Grid de categorias e suítes */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-6 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
               {categorias.map((categoria) => (
                 <div
                   key={categoria.catId}
-                  className="bg-[#08062e] p-5 rounded-2xl shadow-lg hover:shadow-pink-500/30 transition-all duration-300 flex flex-col h-full"
+                  className="bg-[#0d0a3a] p-6 rounded-3xl shadow-2xl border border-pink-600/20 hover:border-pink-500/40 transition-all duration-300 hover:shadow-pink-500/20 flex flex-col"
                 >
-                  <h3 className="text-lg font-bold mb-4 text-center border-b border-pink-500/50 pb-1">
+                  <h3 className="text-xl font-bold mb-5 text-center pb-2 border-b border-pink-500/40">
                     {categoria.catDescricao}
                   </h3>
-  
-                  {categoria.suites && categoria.suites.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 items-start">
+
+                  {categoria.suites?.length ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       {categoria.suites.map((suite) => {
-                        const isOcupada = suite.suiStatus === "O";
-                        const isLimpeza = suite.suiStatus === "L";
-                        const isManutencao = suite.suiStatus === "M";
-  
-                        let buttonClasses = "";
-                        if (isOcupada) {
-                          buttonClasses = "bg-red-600 text-white animate-pulse";
-                        } else if (isLimpeza) {
-                          buttonClasses = "bg-yellow-400 text-black";
-                        } else if (isManutencao) {
-                          buttonClasses = "bg-gray-400 text-black";
-                        } else {
-                          buttonClasses = "bg-[#1b1740] text-white hover:bg-pink-600/30";
-                        }
-  
+                        const statusMap: any = {
+                          O: "bg-red-600 text-white animate-pulse",
+                          L: "bg-yellow-400 text-black",
+                          M: "bg-gray-400 text-black",
+                          A: "bg-[#1b1740] text-white hover:bg-pink-600/30",
+                        };
+
                         return (
                           <button
                             key={suite.suiId}
                             onClick={() => handleIrMovimentos(suite.suiId)}
-                            className={`text-center text-sm p-2 w-full rounded-lg hover:scale-105 transition-all duration-200 ${buttonClasses}`}
+                            className={`p-3 text-center text-sm rounded-xl font-medium transition-all duration-200 hover:scale-105 ${statusMap[suite.suiStatus || "A"]}`}
                           >
                             {suite.suiDescricao}
                           </button>
@@ -169,9 +151,7 @@ export default function DashboardPage() {
                       })}
                     </div>
                   ) : (
-                    <p className="text-gray-400 text-xs mt-4 text-center italic">
-                      Nenhuma suíte cadastrada.
-                    </p>
+                    <p className="text-gray-400 text-xs text-center italic mt-4">Nenhuma suíte cadastrada.</p>
                   )}
                 </div>
               ))}

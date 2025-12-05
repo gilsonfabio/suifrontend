@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
 import { api } from "@/server/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { useParams, useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +49,7 @@ interface ItemConsumo {
   prdReferencia: string;
 }
 
-export default function PedidoPage() {
+export default function FechamentoPage() {
   const router = useRouter();
   const params = useParams();
   const movim = params?.movId as string;
@@ -58,7 +58,6 @@ export default function PedidoPage() {
   const [itens, setItens] = useState<ItemConsumo[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Modais e campos
   const [modalOpen, setModalOpen] = useState(false);
   const [codigoProduto, setCodigoProduto] = useState("");
   const [quantidade, setQuantidade] = useState<number>(1);
@@ -73,12 +72,12 @@ export default function PedidoPage() {
   const [listaBusca, setListaBusca] = useState<any[]>([]);
   const [buscaDescricao, setBuscaDescricao] = useState("");
 
-  // Totais e tempo
-  const [tempoPermanencia, setTempoPermanencia] = useState("00:00:00");
+  const [tempoPermanencia, setTempoPermanencia] = useState("00:00");
   const [totalComSuite, setTotSuite] = useState(0);
   const [totalAPagar, setTotalAPagar] = useState(0);
 
-  // ---------------------- Helpers ----------------------
+  const [showModalFechamento, setShowModalFechamento] = useState(false);
+
   const calcularPermanencia = (entrada: string) => {
     const inicio = new Date(entrada);
     const agora = new Date();
@@ -87,38 +86,47 @@ export default function PedidoPage() {
     const horas = Math.floor(diffMin / 60);
     const minutos = diffMin % 60;
 
-    return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}:00`;
+    return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(
+      2,
+      "0"
+    )}:00`;
   };
 
   function atualizarTotal(mov: Movimento | null, valorSuite: number | null | undefined) {
     if (!mov) return;
-
+  
     const suite = Number(valorSuite ?? 0);
     const consumo = Number(mov.movSuiTotConsumo ?? 0);
     const extra = Number(mov.movSuiUsrVlrExtra ?? 0);
     const deposito = Number(mov.movSuiVlrDeposito ?? 0);
 
-    const total = suite + consumo + extra - deposito;
-
+    const total = ((suite + consumo + extra) - deposito);
+  
+    console.log("🧮 Suite:", suite, "Consumo:", consumo, "TOTAL =", total);
+  
     setTotalAPagar(total);
   }
 
-  // Busca o valor da permanência (suite) a partir do tempo calculado
   const atualizarValorSuite = async (tmp: string, mov?: Movimento) => {
-    const currentMov = mov ?? movimento;
-    if (!currentMov) return;
-
     try {
-      const res = await api.get(`/vlrPermanencia/${currentMov.movSuiId}/${tmp}`);
-      const valorSuite = Number(res.data?.valorTotal ?? 0);
+      const suiId = mov?.movSuiId ?? movimento?.movSuiId;
+  
+      const res = await api.get(`/vlrPermanencia/${suiId}/${tmp}`);
+  
+      // CORREÇÃO IMPORTANTE AQUI
+      const valorSuite = Number(res.data.valorTotal ?? 0);
+  
+      console.log("Valor retornado da API (suite):", valorSuite, res.data);
+  
       setTotSuite(valorSuite);
+  
+      atualizarTotal(movimento, valorSuite);
+  
     } catch (err) {
       console.log("Erro ao buscar valor da suíte:", err);
-      setTotSuite(0);
     }
   };
 
-  // ---------------------- Produtos / busca ----------------------
   const buscarProduto = async () => {
     if (!codigoProduto.trim()) {
       setProdutoInfo(null);
@@ -128,7 +136,7 @@ export default function PedidoPage() {
       setLoadingProduto(true);
       const res = await api.get(`/searchProd/${codigoProduto}`);
       setProdutoInfo(res.data);
-    } catch (err) {
+    } catch {
       setProdutoInfo(null);
     } finally {
       setLoadingProduto(false);
@@ -140,10 +148,11 @@ export default function PedidoPage() {
       setListaBusca([]);
       return;
     }
+
     try {
       const res = await api.get(`/searchProdDesc/${texto}`);
       setListaBusca(res.data ?? []);
-    } catch (err) {
+    } catch {
       setListaBusca([]);
     }
   };
@@ -155,59 +164,76 @@ export default function PedidoPage() {
     setBuscaDescricao(prod.prdDescricao);
   };
 
-  // ---------------------- Carregar movimento / itens ----------------------
-  
   const carregarMovimento = async () => {
-    if (!movim) return;
     try {
       const respMov = await api.get(`/dadosMovim/${movim}`);
-      const mov: Movimento = respMov.data;
-
+      const mov = respMov.data;
+  
+      // 1) Salva movimento
       setMovimento(mov);
-
+  
+      // 2) Carrega itens
       const respItens = await api.get(`/searchItens/${movim}`);
       setItens(respItens.data ?? []);
+  
+      // 3) Calcula tempo de permanência imediatamente
+      const tmp = calcularPermanencia(mov.movSuiEntrada);
+      setTempoPermanencia(tmp);
+  
+      // 4) Calcula o valor da permanência (API)
+      const res = await api.get(`/vlrPermanencia/${mov.movSuiId}/${tmp}`);
+      const valorSuite = Number(res.data.valorTotal ?? 0);
+  
+      // 5) Atualiza o valor da permanência (isso chama o cálculo total automaticamente)
+      setTotSuite(valorSuite);
+  
+      // 6) GARANTE o cálculo correto do total depois da permanência
+      atualizarTotal(mov, valorSuite);
+  
     } catch (err) {
-      console.log(err);
+      console.log("Erro carregar movimento:", err);
       alert("Erro ao carregar dados");
     }
   };
-
-  // ---------------------- Effects ----------------------
-  // Recalcula total sempre que movimento ou total da suite mudarem
+  
   useEffect(() => {
-    if (!movimento) return;
-    atualizarTotal(movimento, totalComSuite);
+    if (movimento) {
+      atualizarTotal(movimento, totalComSuite);
+    }
   }, [movimento, totalComSuite]);
 
-  // Carrega inicial
   useEffect(() => {
     if (movim) carregarMovimento();
   }, [movim]);
 
-  // Intervalos para tempo e valor da suite (10s)
   useEffect(() => {
     if (!movimento?.movSuiEntrada || movimento.movSuiSaida) return;
-
-    let mounted = true;
-
-    const update = async () => {
-      if (!mounted) return;
+  
+    const atualizarTempo = () => {
       const tmp = calcularPermanencia(movimento.movSuiEntrada);
       setTempoPermanencia(tmp);
-      await atualizarValorSuite(tmp, movimento);
     };
-
-    update();
-
-    const interval = setInterval(update, 10000);
+  
+    const atualizarValor = async () => {
+      const tmp = calcularPermanencia(movimento.movSuiEntrada);
+      await atualizarValorSuite(tmp);
+    };
+  
+    // Atualiza imediatamente ao abrir a tela
+    atualizarTempo();
+    atualizarValor();
+  
+    // Atualiza visualmente a cada 10 segundo
+    const intervalTempo = setInterval(atualizarTempo, 10000);
+  
+    // Chama a API apenas a cada 10 segundos
+    const intervalValor = setInterval(atualizarValor, 10000);
+  
     return () => {
-      mounted = false;
-      clearInterval(interval);
+      clearInterval(intervalTempo);
+      clearInterval(intervalValor);
     };
   }, [movimento?.movSuiEntrada, movimento?.movSuiSaida]);
-
-  // ---------------------- Lançar item ----------------------
   const limparCamposLancar = () => {
     setCodigoProduto("");
     setQuantidade(1);
@@ -230,21 +256,19 @@ export default function PedidoPage() {
         movConProVlrUnitario: produtoInfo.prdPrcUnitario,
       });
 
-      // Fecha modal e limpa campos imediatamente
       setModalOpen(false);
       limparCamposLancar();
 
-      // Recarrega movimento — quando movimento for atualizado, o useEffect recalcula total
       await carregarMovimento();
-    } catch (err) {
-      console.log(err);
+      atualizarTotal(movimento, totalComSuite);
+
+    } catch {
       alert("Erro ao lançar item");
     } finally {
       setLoading(false);
     }
   };
 
-  // ---------------------- Retirar item ----------------------
   const handleConfirmarRetirada = async () => {
     try {
       if (!codigoRemove.trim()) return alert("Informe o código");
@@ -262,9 +286,33 @@ export default function PedidoPage() {
       setQtdRemove(1);
 
       await carregarMovimento();
-    } catch (err) {
-      console.log(err);
+      atualizarTotal(movimento, totalComSuite);
+
+    } catch {
       alert("Erro ao retirar item");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmarFechamento = async (movId: number) => {
+    if (!movId) {
+      alert("Movimento inválido.");
+      return;
+    }
+  
+    try {
+      setLoading(true);
+  
+      const res = await api.post("/fechar", { movim: movId });
+  
+      console.log("Fechamento concluído:", res.data);
+  
+      setShowModalFechamento(false);
+      router.push("/dashboard");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao registrar fechamento.");
     } finally {
       setLoading(false);
     }
@@ -272,46 +320,38 @@ export default function PedidoPage() {
 
   function formatarDataBR(dataISO: string | null): string {
     if (!dataISO) return "—";
+  
     const data = new Date(dataISO);
-    return data.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  
+    return data.toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+    });
   }
 
-  // ---------------------- Render ----------------------
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Pedido da Suíte #{movimento?.movSuiId ?? "—"}</h1>
+      <h1 className="text-2xl font-bold">
+        Pedido da Suíte #{movimento?.movSuiId ?? "—"}
+      </h1>
 
+      {/* Dados do pedido */}
       {movimento && (
         <Card>
           <CardHeader className="font-semibold text-lg flex items-center justify-between">
             <span>Dados do Pedido</span>
             <button
               onClick={() => router.back()}
-              className="bg-[#08062e] text-white px-4 py-2 rounded-lg hover:bg-pink-800"
-            >
-              ← Voltar
+              className="bg-[#08062e] text-white px-4 py-2 rounded-lg hover:bg-pink-800 ">
+                ← Voltar
             </button>
           </CardHeader>
-
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <p>
-              <strong>ID:</strong> {movimento.movId}
-            </p>
-            <p>
-              <strong>Entrada:</strong> {formatarDataBR(movimento.movSuiEntrada)}
-            </p>
-            <p>
-              <strong>Saída:</strong> {movimento.movSuiSaida || "—"}
-            </p>
-            <p>
-              <strong>Permanência:</strong> {tempoPermanencia}
-            </p>
-            <p>
-              <strong>Valor da Permanência:</strong> R$ {Number(totalComSuite || 0).toFixed(2)}
-            </p>
-            <p>
-              <strong>Consumo:</strong> R$ {Number(movimento.movSuiTotConsumo).toFixed(2)}
-            </p>
+            <p><strong>ID:</strong> {movimento.movId}</p>
+            <p><strong>Entrada:</strong> {formatarDataBR(movimento.movSuiEntrada)}</p>
+            <p><strong>Saída:</strong> {movimento.movSuiSaida || "—"}</p>
+            <p><strong>Permanência:</strong> {tempoPermanencia}</p>
+            <p><strong>Valor da Permanência:</strong> R$ {Number(totalComSuite || 0).toFixed(2)}</p>
+            <p><strong>Consumo:</strong> R$ {Number(movimento.movSuiTotConsumo).toFixed(2)}</p>
             <p>
               <strong>Usuários Extra:</strong> {Number(movimento.movSuiUsrQtdExtra)} — R$ {Number(movimento.movSuiUsrVlrExtra).toFixed(2)}
             </p>
@@ -320,20 +360,24 @@ export default function PedidoPage() {
             </p>
             <p>
               <strong>Total a Pagar:</strong>
-              <span className="font-bold text-green-700"> R$ {Number(totalAPagar || 0).toFixed(2)}</span>
+                <span className="font-bold text-green-700">
+                {" "}
+                R$ {Number(totalAPagar || 0).toFixed(2)}
+              </span>
             </p>
-            <p>
-              <strong>Status:</strong> {movimento.movSuiStatus}
-            </p>
+            <p><strong>Status:</strong> {movimento.movSuiStatus}</p>
           </CardContent>
         </Card>
       )}
 
+      {/* Itens */}
       <Card>
         <CardHeader className="flex justify-between items-center">
           <h2 className="font-semibold text-lg">Itens do Pedido</h2>
 
           <div className="flex gap-2">
+
+            {/* Modal lançar */}
             <Dialog
               open={modalOpen}
               onOpenChange={(aberto) => {
@@ -351,6 +395,8 @@ export default function PedidoPage() {
                 </DialogHeader>
 
                 <div className="space-y-4">
+
+                  {/* Buscar por descrição */}
                   <Input
                     placeholder="Buscar produto por descrição..."
                     value={buscaDescricao}
@@ -369,12 +415,15 @@ export default function PedidoPage() {
                           onClick={() => selecionarProdutoBusca(p)}
                         >
                           <p className="font-semibold">{p.prdDescricao}</p>
-                          <p className="text-xs text-gray-600">Ref: {p.prdReferencia}</p>
+                          <p className="text-xs text-gray-600">
+                            Ref: {p.prdReferencia}
+                          </p>
                         </div>
                       ))}
                     </div>
                   )}
 
+                  {/* Código */}
                   <Input
                     placeholder="Código do Produto"
                     value={codigoProduto}
@@ -382,6 +431,7 @@ export default function PedidoPage() {
                     onBlur={buscarProduto}
                   />
 
+                  {/* Quantidade */}
                   <Input
                     type="number"
                     placeholder="Quantidade"
@@ -389,6 +439,7 @@ export default function PedidoPage() {
                     onChange={(e) => setQuantidade(Number(e.target.value))}
                   />
 
+                  {/* Produto carregado */}
                   {loadingProduto && <p>Carregando...</p>}
 
                   {produtoInfo && (
@@ -397,7 +448,9 @@ export default function PedidoPage() {
                         <strong>{produtoInfo.prdDescricao}</strong>
                       </p>
                       <p>Ref: {produtoInfo.prdReferencia}</p>
-                      <p>Preço: R$ {Number(produtoInfo.prdPrcUnitario).toFixed(2)}</p>
+                      <p>
+                        Preço: R$ {Number(produtoInfo.prdPrcUnitario).toFixed(2)}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -410,6 +463,7 @@ export default function PedidoPage() {
               </DialogContent>
             </Dialog>
 
+            {/* Modal retirar */}
             <Dialog
               open={modalRetirar}
               onOpenChange={(aberto) => {
@@ -445,14 +499,46 @@ export default function PedidoPage() {
                 </div>
 
                 <DialogFooter>
-                  <Button onClick={handleConfirmarRetirada} disabled={loading}>
+                  <Button
+                    onClick={handleConfirmarRetirada}
+                    disabled={loading}
+                  >
                     {loading ? "Processando..." : "Confirmar"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            {/* Modal Fechamento */}
+            <Dialog
+                open={showModalFechamento}
+                onOpenChange={(aberto) => setShowModalFechamento(aberto)}
+            >
+                <DialogTrigger asChild>
+                    <Button variant="outline" className="bg-blue-600 text-white hover:bg-blue-700">
+                        Fechamento
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Confirmar Fechamento</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-gray-700 py-3">
+                        Deseja realmente fechar o movimento #{movimento?.movId}?
+                    </p>
+                    <DialogFooter>
+                        <Button
+                            onClick={() => handleConfirmarFechamento(movimento!.movId)}
+                            disabled={loading}
+                            className="bg-green-600 text-white hover:bg-green-700"
+                        >
+                            {loading ? "Processando..." : "Confirmar Fechamento"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
           </div>
         </CardHeader>
+        
 
         <CardContent className="space-y-3">
           {(itens.length ?? 0) > 0 && (
@@ -481,7 +567,9 @@ export default function PedidoPage() {
                 <p>{item.prdUnidade}</p>
                 <p>{item.movSuiProQtd}</p>
                 <p>R$ {item.movSuiProVUnit.toFixed(2)}</p>
-                <p className="font-bold text-green-700">R$ {item.movSuiProVTotal.toFixed(2)}</p>
+                <p className="font-bold text-green-700">
+                  R$ {item.movSuiProVTotal.toFixed(2)}
+                </p>
               </div>
             ))
           )}
